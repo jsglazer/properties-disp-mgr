@@ -1,0 +1,9 @@
+/* Properties Display Manager — settings tab */
+.pdm-rule-input {
+	min-width: 16em;
+}
+
+.pdm-toggle-label {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}

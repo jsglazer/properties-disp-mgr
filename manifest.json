@@ -1,0 +1,10 @@
+{
+	"id": "properties-disp-mgr",
+	"name": "Properties Display Manager",
+	"version": "1.0.0",
+	"minAppVersion": "1.4.10",
+	"description": "Collapse the properties panel when a note opens, scoped by folder, regex, or a per-note frontmatter key.",
+	"author": "Josh Glazer",
+	"authorUrl": "https://github.com/jsglazer",
+	"isDesktopOnly": false
+}
