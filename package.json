@@ -1,6 +1,6 @@
 {
 	"name": "properties-disp-mgr",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Collapse the Obsidian properties panel on open, scoped by folder, regex, or a per-note frontmatter key.",
 	"main": "main.js",
 	"type": "module",
@@ -11,13 +11,22 @@
 		"test": "vitest run",
 		"test:watch": "vitest"
 	},
-	"keywords": ["obsidian", "plugin", "properties", "frontmatter", "fold"],
+	"keywords": [
+		"obsidian",
+		"plugin",
+		"properties",
+		"frontmatter",
+		"fold"
+	],
 	"author": "Josh Glazer",
 	"license": "MIT",
 	"dependencies": {
 		"monkey-around": "^3.0.0"
 	},
 	"devDependencies": {
+		"@codemirror/language": "^6.12.4",
+		"@codemirror/state": "^6.7.5",
+		"@codemirror/view": "^6.38.6",
 		"@types/node": "^25.9.3",
 		"esbuild": "0.28.1",
 		"eslint": "^10.5.0",

@@ -25,6 +25,9 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 var import_obsidian2 = require("obsidian");
 
+// src/adapter.ts
+var import_language = require("@codemirror/language");
+
 // node_modules/monkey-around/dist/index.mjs
 function around(obj, factories) {
   const removers = Object.keys(factories).map((key) => around1(obj, key, factories[key]));
@@ -61,6 +64,18 @@ function around1(obj, method, createWrapper) {
   }
 }
 
+// src/core/frontmatter.ts
+var MAX_FRONTMATTER_LINES = 2e3;
+function frontmatterEndLine(lineText, lineCount) {
+  if (lineCount < 2 || lineText(1).trimEnd() !== "---") return null;
+  const last = Math.min(lineCount, MAX_FRONTMATTER_LINES);
+  for (let line = 2; line <= last; line++) {
+    const text = lineText(line).trimEnd();
+    if (text === "---" || text === "...") return line;
+  }
+  return null;
+}
+
 // src/adapter.ts
 function isObject(value) {
   return typeof value === "object" && value !== null;
@@ -84,12 +99,52 @@ function canShowProperties(view) {
 }
 function applyDecision(view, decision) {
   if (decision === "none") return false;
-  const editor = getMetadataEditor(view);
-  if (!editor || !canShowProperties(view)) return false;
   const collapsed = decision === "collapse";
-  if (editor.collapsed === collapsed) return false;
-  editor.setCollapse(collapsed, false);
-  return true;
+  const editor = getMetadataEditor(view);
+  if (editor && canShowProperties(view)) {
+    if (editor.collapsed === collapsed) return false;
+    editor.setCollapse(collapsed, false);
+    return true;
+  }
+  return applyFrontmatterFold(view, collapsed);
+}
+function getEditorView(view) {
+  if (!isObject(view) || typeof view.getMode !== "function") return null;
+  if (view.getMode.call(view) !== "source") return null;
+  const editMode = view.editMode;
+  if (!isObject(editMode)) return null;
+  const cm = editMode.cm;
+  if (!isObject(cm) || !isObject(cm.state) || typeof cm.dispatch !== "function") return null;
+  return cm;
+}
+function frontmatterRange(state) {
+  var _a;
+  const doc = state.doc;
+  const end = frontmatterEndLine((n) => doc.line(n).text, doc.lines);
+  if (end === null) return null;
+  const first = doc.line(1);
+  return (_a = (0, import_language.foldable)(state, first.from, first.to)) != null ? _a : { from: first.to, to: doc.line(end).to };
+}
+function applyFrontmatterFold(view, collapsed) {
+  const cm = getEditorView(view);
+  if (!cm) return false;
+  const state = cm.state;
+  const range = frontmatterRange(state);
+  if (!range) return false;
+  let existing = null;
+  (0, import_language.foldedRanges)(state).between(0, state.doc.line(1).to, (from, to) => {
+    existing = { from, to };
+    return false;
+  });
+  if (collapsed && !existing) {
+    cm.dispatch({ effects: import_language.foldEffect.of(range) });
+    return true;
+  }
+  if (!collapsed && existing) {
+    cm.dispatch({ effects: import_language.unfoldEffect.of(existing) });
+    return true;
+  }
+  return false;
 }
 function safely(callback, view) {
   try {

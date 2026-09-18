@@ -1,5 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
-import { applyDecision, canShowProperties, getMetadataEditor, installHooks, wrapSetMode, wrapSetViewData } from "../src/adapter";
+import { codeFolding, foldedRanges } from "@codemirror/language";
+import { EditorState, type TransactionSpec } from "@codemirror/state";
+import {
+	applyDecision,
+	applyFrontmatterFold,
+	canShowProperties,
+	frontmatterRange,
+	getMetadataEditor,
+	installHooks,
+	wrapSetMode,
+	wrapSetViewData,
+} from "../src/adapter";
 
 function fakeView(collapsed: boolean, opts: { canShow?: boolean | "throws" | "missing" } = {}) {
 	const setCollapse = vi.fn(function (this: { collapsed: boolean }, value: boolean) {
@@ -141,5 +152,65 @@ describe("installHooks", () => {
 		const uninstall = installHooks(NoMode.prototype, vi.fn());
 		expect("setMode" in NoMode.prototype).toBe(false);
 		uninstall();
+	});
+});
+
+function editorView(doc: string, opts: { mode?: string; canShow?: boolean; collapsed?: boolean } = {}) {
+	const cm = {
+		state: EditorState.create({ doc, extensions: [codeFolding()] }),
+		dispatches: 0,
+		dispatch(spec: TransactionSpec) {
+			this.dispatches++;
+			this.state = this.state.update(spec).state;
+		},
+	};
+	const view = {
+		getMode: () => opts.mode ?? "source",
+		canShowProperties: () => opts.canShow ?? false,
+		metadataEditor: { collapsed: opts.collapsed ?? false, setCollapse: vi.fn() },
+		editMode: { cm },
+	};
+	const folds = () => {
+		const out: [number, number][] = [];
+		foldedRanges(cm.state).between(0, cm.state.doc.length, (f, t) => void out.push([f, t]));
+		return out;
+	};
+	return { view, cm, folds };
+}
+
+const DOC = "---\ntitle: x\ntags: [a]\n---\nbody line\n";
+
+describe("frontmatter fold fallback (properties shown as source / source mode)", () => {
+	it("computes the range from the end of the opening line to the end of the closer", () => {
+		const { cm } = editorView(DOC);
+		expect(frontmatterRange(cm.state)).toEqual({ from: 3, to: DOC.indexOf("\nbody") });
+	});
+	it("collapse folds the frontmatter once; a second call is a no-op", () => {
+		const { view, cm, folds } = editorView(DOC);
+		expect(applyDecision(view, "collapse")).toBe(true);
+		expect(folds()).toEqual([[3, DOC.indexOf("\nbody")]]);
+		expect(applyDecision(view, "collapse")).toBe(false);
+		expect(cm.dispatches).toBe(1);
+		expect(view.metadataEditor.setCollapse).not.toHaveBeenCalled();
+	});
+	it("expand unfolds an existing frontmatter fold, whatever its exact range", () => {
+		const { view, cm, folds } = editorView(DOC);
+		applyFrontmatterFold(view, true);
+		expect(folds()).toHaveLength(1);
+		expect(applyDecision(view, "expand")).toBe(true);
+		expect(folds()).toEqual([]);
+		expect(applyDecision(view, "expand")).toBe(false);
+	});
+	it("does nothing without frontmatter, in reading mode, or without an editor", () => {
+		expect(applyDecision(editorView("no frontmatter\n").view, "collapse")).toBe(false);
+		expect(applyDecision(editorView(DOC, { mode: "preview" }).view, "collapse")).toBe(false);
+		expect(applyFrontmatterFold({ getMode: () => "source" }, true)).toBe(false);
+		expect(applyFrontmatterFold({ getMode: () => "source", editMode: { cm: { state: {} } } }, true)).toBe(false);
+	});
+	it("prefers the properties panel when Obsidian can show it", () => {
+		const { view, cm } = editorView(DOC, { canShow: true, collapsed: false });
+		expect(applyDecision(view, "collapse")).toBe(true);
+		expect(view.metadataEditor.setCollapse).toHaveBeenCalledWith(true, false);
+		expect(cm.dispatches).toBe(0);
 	});
 });

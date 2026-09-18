@@ -9,6 +9,7 @@ Based on the feature set of [Fold Properties By Default](https://github.com/tber
 ## What it does
 
 - **Collapses properties on open** for notes that match your rules, in every open pane — not only the active one.
+- **Works with every Properties in document setting.** With *Visible*, the properties panel is collapsed. With *Source* (or in source mode), where the frontmatter is raw YAML, the YAML block is folded in the editor instead — the same fallback Obsidian's own **Toggle fold properties** command uses. With *Hidden* there is nothing to fold.
 - **Folder rules** — pick a folder by name (with suggestions from your vault). Turn on **Subfolders** to include everything beneath it. `/` means the vault root.
 - **Regex rules** — a JavaScript regular expression tested against the note's full vault path, e.g. `^Daily/` or `\.excalidraw\.md$`. Invalid patterns are flagged inline in settings and skipped; they never break anything else.
 - **Per-note frontmatter override** — add `propdispmgr: collapse` to force a note collapsed, or `propdispmgr: expand` to force it open. The override beats every folder and regex rule. The key name is configurable.
@@ -40,11 +41,11 @@ Any other value is ignored and the folder/regex rules decide.
 
 Obsidian restores each note's saved fold state after it has read the file, which happens asynchronously after the `file-open` event. The original plugin worked around that race by waiting 300 ms and polling the DOM up to 17 more times, then toggling the fold with a command on the active pane only.
 
-This plugin instead runs immediately after Obsidian's own restore step (`MarkdownView.setViewData`) and after a mode switch (`setMode`), and sets the panel state directly with no animation. There are no timers, no DOM queries, and no commands executed. Nothing is written to disk: the collapse is applied without animation, so it is not persisted into Obsidian's fold history, and your notes are never edited.
+This plugin instead runs immediately after Obsidian's own restore step (`MarkdownView.setViewData`) and after a mode switch (`setMode`), and sets the panel state directly with no animation. There are no timers, no DOM queries, and no commands executed, and your notes are never edited. The panel collapse is applied without animation, so it is not saved into Obsidian's fold history. The source-mode YAML fold is an ordinary editor fold, which Obsidian remembers the way it remembers any fold you make by hand.
 
-The internal Obsidian objects it touches (`metadataEditor`, `setCollapse`, `canShowProperties`, `setMode`) live in a single adapter file, are feature-detected, and fall back to doing nothing if a future Obsidian version changes them. Verified against Obsidian 1.13.7.
+The internal Obsidian objects it touches (`metadataEditor`, `setCollapse`, `canShowProperties`, `setMode`, `editMode.cm`) live in a single adapter file, are feature-detected, and fall back to doing nothing if a future Obsidian version changes them. Verified against Obsidian 1.13.7.
 
-Properties are left alone in source mode and when **Properties in document** is set to hidden or source, as Obsidian itself does.
+Reading view with properties shown as source has no fold control in Obsidian, so it is left alone.
 
 ## Installation
 

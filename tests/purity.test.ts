@@ -27,7 +27,7 @@ describe("reviewer criteria", () => {
 	});
 	it("undocumented internals are referenced only in the adapter", () => {
 		for (const f of all.filter((f) => f !== "adapter.ts")) {
-			expect(read(f), f).not.toMatch(/metadataEditor|setCollapse|canShowProperties|setMode/);
+			expect(read(f), f).not.toMatch(/metadataEditor|setCollapse|canShowProperties|setMode|editMode/);
 		}
 	});
 	it("the prototype hook is registered for unload", () => {

@@ -2,12 +2,21 @@
 //   MarkdownView#metadataEditor.{collapsed, setCollapse(collapsed, animate)}
 //   MarkdownView#canShowProperties()
 //   MarkdownView#setMode(mode) → Promise<boolean>
+//   MarkdownView#editMode.cm (the CodeMirror EditorView)
 // Verified against Obsidian 1.13.7. Every access is feature-detected and
 // degrades to a no-op, so an API change is a one-file fix. This module does not
 // import `obsidian`; views arrive as `unknown`, which keeps it testable headless.
 
+import { foldable, foldedRanges, foldEffect, unfoldEffect } from "@codemirror/language";
+import type { EditorState, StateEffect } from "@codemirror/state";
 import { around } from "monkey-around";
 import type { Decision } from "./core/decide";
+import { frontmatterEndLine } from "./core/frontmatter";
+
+interface EditorViewLike {
+	state: EditorState;
+	dispatch(spec: { effects: StateEffect<unknown> }): void;
+}
 
 interface MetadataEditorLike {
 	collapsed: boolean;
@@ -44,18 +53,65 @@ export function canShowProperties(view: unknown): boolean {
 }
 
 /**
- * Puts the view's properties panel in the decided state. Uses animate=false,
- * which also skips Obsidian's fold persistence, so nothing is written anywhere.
- * Returns true if the panel state changed.
+ * Puts the view's properties in the decided state and returns true if anything
+ * changed. When Obsidian shows a properties panel, the panel is collapsed or
+ * expanded with animate=false, which also skips Obsidian's fold persistence.
+ * When it does not (properties shown as source, or source mode), the raw
+ * frontmatter block is folded or unfolded in the editor instead, the same
+ * fallback Obsidian's own "Toggle fold properties" command uses.
  */
 export function applyDecision(view: unknown, decision: Decision): boolean {
 	if (decision === "none") return false;
-	const editor = getMetadataEditor(view);
-	if (!editor || !canShowProperties(view)) return false;
 	const collapsed = decision === "collapse";
-	if (editor.collapsed === collapsed) return false;
-	editor.setCollapse(collapsed, false);
-	return true;
+	const editor = getMetadataEditor(view);
+	if (editor && canShowProperties(view)) {
+		if (editor.collapsed === collapsed) return false;
+		editor.setCollapse(collapsed, false);
+		return true;
+	}
+	return applyFrontmatterFold(view, collapsed);
+}
+
+function getEditorView(view: unknown): EditorViewLike | null {
+	if (!isObject(view) || typeof view.getMode !== "function") return null;
+	if ((view.getMode as () => unknown).call(view) !== "source") return null;
+	const editMode = view.editMode;
+	if (!isObject(editMode)) return null;
+	const cm = editMode.cm;
+	if (!isObject(cm) || !isObject(cm.state) || typeof cm.dispatch !== "function") return null;
+	return cm as unknown as EditorViewLike;
+}
+
+/** The frontmatter fold range: Obsidian's own fold for line 1 if it has one, else end of `---` to end of the closer. */
+export function frontmatterRange(state: EditorState): { from: number; to: number } | null {
+	const doc = state.doc;
+	const end = frontmatterEndLine((n) => doc.line(n).text, doc.lines);
+	if (end === null) return null;
+	const first = doc.line(1);
+	return foldable(state, first.from, first.to) ?? { from: first.to, to: doc.line(end).to };
+}
+
+/** Folds (collapsed=true) or unfolds the frontmatter block. Returns true if it dispatched. */
+export function applyFrontmatterFold(view: unknown, collapsed: boolean): boolean {
+	const cm = getEditorView(view);
+	if (!cm) return false;
+	const state = cm.state;
+	const range = frontmatterRange(state);
+	if (!range) return false;
+	let existing: { from: number; to: number } | null = null;
+	foldedRanges(state).between(0, state.doc.line(1).to, (from, to) => {
+		existing = { from, to };
+		return false;
+	});
+	if (collapsed && !existing) {
+		cm.dispatch({ effects: foldEffect.of(range) });
+		return true;
+	}
+	if (!collapsed && existing) {
+		cm.dispatch({ effects: unfoldEffect.of(existing) });
+		return true;
+	}
+	return false;
 }
 
 function safely(callback: ViewCallback, view: unknown): void {
